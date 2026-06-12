@@ -1,0 +1,170 @@
+Research Memo: In-Context Learning and Query
+Vector Movement
+Theoretical Synthesis and Experimental Design
+Pratyay Dutta
+Department of Computer Science, University of California, Riverside
+June 10, 2026
+Abstract
+This document captures a comprehensive research discussion bridging modern In-Context
+Learning (ICL) in Large Language Models with classical Query Vector Movement (QVM) the-
+ories. It includes a literature review of recent ICL advancements, a structured reading guide, a
+detailed breakdown of ICL mechanics, and a formal synthesis connecting attention dynamics to
+relevance feedback, concluding with proposed ablation studies.
+1
+Recent Literature on In-Context Learning (ICL)
+Query: Give me the most recent papers on In Context Learning (ICL).
+Here are some of the most significant recent papers on In-Context Learning (ICL), highlighting
+new methodologies, theoretical frameworks, and applications in multi-modal architectures:
+• Many-Shot CoT-ICL: Making In-Context Learning Truly Learn (Chung, n.d.): In-
+vestigates ICL behavior when scaled to dozens or hundreds of examples. Proposes Curvilinear
+Demonstration Selection (CDS) to restructure the context window into a learning curriculum
+for chain-of-thought reasoning.
+• Parallel In-context Learning for Large Vision Language Models (Yamaguchi,
+n.d.): Tackles the quadratic computational cost of multi-modal ICL. The Parallel-ICL al-
+gorithm partitions contexts, processes chunks in parallel, and merges predictions using a
+weighted Product-of-Experts ensemble.
+• On Theoretical Interpretations of Concept-Based In-Context Learning (Tang et
+al., 2025): Introduces a mathematical framework quantifying how models leverage prompt
+knowledge and proposes a similarity measure between demonstrations and queries.
+Foundational context is provided by Kossen et al. (2023) on label relationships, Lin & Lee
+(2024) on dual operating modes, and Dong et al. (2022) for a comprehensive general survey.
+1
+2
+Recommended Reading Progression
+Query: Give me a rough order of reading since I want to learn about the topic and then look at
+recent advancements.
+To understand ICL from the ground up, the following progression is recommended:
+1. Core Foundations: The Birth of ICL
+• Language Models are Few-Shot Learners (Brown et al., 2020): The seminal GPT-3 paper
+introducing ICL.
+• It’s Not Just Size That Matters: Small Language Models Are Also Few-Shot Learners (Schick
+& Schütze, 2021): Introduces Pattern-Exploiting Training (PET) for smaller models.
+2. Surveys & Syntheses: Mapping the Landscape
+• A Survey on In-context Learning (Dong et al., 2022): The definitive early survey formalizing
+ICL definitions and prompt design.
+• A Practical Survey on Zero-shot Prompt Design for In-context Learning (Li, 2023): Focuses
+on discrete and continuous prompts.
+3. Advanced Mechanics: How Does it Actually Work?
+• Rethinking the Role of Demonstrations (Min et al., 2022): Argues that demonstrations pri-
+marily teach format and label space, not the input-output mapping.
+• In-Context Learning Learns Label Relationships but Is Not Conventional Learning (Kossen et
+al., 2023): Provides a counter-argument that ICL does rely on label information in certain
+scenarios.
+4. The Current Frontier: Many-Shot & Multi-Modal (2024–2026)
+• A Survey on Multimodal Large Language Models (Yin et al., 2023): Covers the transition to
+Multimodal ICL (MM-ICL).
+• Many-Shot In-Context Learning (Agarwal et al., 2024): Explores scaling to thousands of
+demonstrations.
+• From Few to Many: Self-Improving Many-Shot Reasoners (Wan et al., 2025): Explores au-
+tomated prompt construction and demonstration optimization.
+3
+Deep Dive: A Survey on In-context Learning (Dong et al., 2022)
+Query: Explain this paper to me section by section in detail providing intuition and math married
+together beautifully...
+2
+1. Introduction & Formulation
+Intuition: ICL allows models to learn without parameter updates, functioning similarly to an
+amnesiac student recognizing patterns from a few solved examples on a worksheet.
+Math: In ICL, parameters θ are frozen. A context C = {(x1, y1), . . . , (xk, yk)} is concatenated
+with a target query xtarget. The objective is to compute:
+y∗= arg max
+y
+P(y|xtarget, C; θ)
+(1)
+2. Prompt Design
+The exact composition of C is paramount, divided into three sub-problems:
+• Demonstration Selection: Finding examples conceptually closest to the target query using
+unsupervised distance metrics (e.g., L2, cosine similarity) or supervised retrieval models.
+• Demonstration Formatting: Mapping inputs and labels into a natural language template
+(discrete prompts) or vector space (continuous prompts).
+• Demonstration Ordering: Mitigating recency bias, where models place disproportionate
+weight on the final example preceding the query.
+3. Inference & Scoring Strategies
+Math: Contrasting direct scoring with channel scoring to mitigate prior probability bias:
+Direct Scoring: Score = P(y|x, C)
+(2)
+Channel Scoring: Score = P(x|y, C) · P(y|C)
+(3)
+Channel scoring naturally normalizes output distribution and mitigates bias toward common words.
+4. Pre-training for ICL
+ICL capabilities scale with pre-training corpora containing long-range dependencies and implicit
+analogies. Meta-tuning on ICL-formatted data can further sharpen pattern recognition.
+5. Under the Hood: Implicit Bayesian Inference and Attention
+Math: The context C helps infer the posterior distribution of a latent task concept γ:
+P(y|xtarget, C) ≈
+Z
+P(y|xtarget, γ)P(γ|C)dγ
+(4)
+Furthermore, the self-attention mechanism strongly parallels standard gradient descent, computing
+a pseudo-gradient to adapt representations dynamically.
+4
+Theoretical Synthesis: Formalizing ICL via QVM
+Query: So icl can effectively be seen as an implicit movement of embeddings in the latent space. I
+want to delve deeper into this. There is a theory called Query Vector Movement... TPAMI 2005
+paper by Bir Bhanu.
+Drawing a direct mathematical bridge between classic Content-Based Image Retrieval (CBIR)
+Relevance Feedback mechanisms (QVM) and modern LLM attention dynamics.
+3
+Formalizing ICL as Query Vector Movement
+In classical QVM (e.g., Rocchio algorithm), an initial query vector qold is updated based on positive
+(D+) and negative (D−) relevance feedback:
+qnew = αqold + β
+1
+|D+|
+X
+x∈D+
+x −γ
+1
+|D−|
+X
+x∈D−
+x
+(5)
+In a Transformer layer, for a target query token representation hq, the residual connection and
+attention mechanism update is:
+h(new)
+q
+= h(old)
+q
++
+X
+i∈C
+softmax
+ 
+(Wqh(old)
+q
+)(Wkhi)T
+√
+d
+!
+Wvhi
+(6)
+The Mathematical Symmetry:
+• The Residual is qold: h(old)
+q
+is analogous to αqold (where α = 1).
+• Attention as Relevance Weighting: The summation over context tokens C represents the
+query vector moving toward “positive” demonstrations. The static weight β
+1
+|D+| is replaced
+by the dynamic attention score softmax(. . . ).
+• The Missing γ Term: Standard ICL lacks the −γ term because negative demonstrations
+are rarely provided. Engineering negative context representations to explicitly repulse the
+query vector presents a significant research gap.
+Probing the Sensitivity: Experimental Design
+To formally demonstrate ICL sensitivity through the lens of QVM, three ablation studies are
+proposed:
+1. Latent Noise Injection (Continuous Perturbation): Inject scaled Gaussian noise into
+the value vectors Vi = Wvhi of the context. Track the cosine similarity between the clean
+h(new)
+q
+and perturbed ˆh(new)
+q
+across layers.
+2. Attention Distribution Skewing (Structural Perturbation): Permute the order of
+demonstrations in C. Measure the variance of the final query vector’s position to mathemat-
+ically quantify recency bias.
+3. Label Space Flipping (Semantic Perturbation): Replace correct labels with incorrect
+ones. Project intermediate query embeddings into a 2D space to observe if the vector moves
+toward the format manifold or is pulled toward the incorrect semantic manifold.
+4
