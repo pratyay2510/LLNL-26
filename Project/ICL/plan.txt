@@ -1,0 +1,123 @@
+Retrieval-Augmented Steering (RAS)
+Query-Conditional Latent Control for Reasoning,
+with a Conformal No-Harm Guarantee
+Working name: "Conformal Steering" / "Safe RAS"
+Research Plan — In-Context Learning / Activation Steering
+
+
+Executive Summary
+In one line:  just as RAG decouples knowledge from weights (retrieve documents at inference), RAS decouples skills from weights by retrieving demonstration-derived steering vectors at inference — at ~zero context-token cost and with no retraining to add a skill.
+The paper leads with a calibrated steer-or-abstain gate that controls the harm rate (the probability that steering flips a baseline-correct answer to wrong) at a user-chosen level α via conformal risk control. The headline result is the risk–coverage frontier: how much reasoning gain is retained at a guaranteed harm rate — a control knob global steering does not have.
+Novelty verdict (honest): "query-conditional steering" is NOT novel (crowded 2025–26 area). What is open is the combination: a non-parametric, extensible, retrieval-augmented steering system + an uncertainty-gated "do-no-harm" guarantee + a reasoning focus, at near-zero cost.
+1. Motivation
+Activation steering can improve reasoning, but it is documented to be unreliable and input-dependent, and even “benign” steering can cause harmful side-effects. A single global vector applied to every query is a compromise average that helps some inputs and silently degrades others — unacceptable for deployment.
+The deepest unmet need is not “steer harder” but steer only when it is safe to, and abstain otherwise.
+Two further observations sharpen the opportunity:
+Prompt as a router. the prompt is itself a signal that can retrieve which steering vector(s) to use (a RAG-like intuition) — e.g. a math question should pull a math-reasoning vector, not a global average; and
+Heterogeneity thesis. gains appear specifically under heterogeneity — a mixture of query types where one global vector cannot be right for all. This is exactly where global steering provably fails and where a retrieve-then-steer system earns its keep.
+Evidence base for the motivation (verified):
+Steering is unreliable / input-dependent — Tan et al., NeurIPS 2024; Braun 2026 (2602.17881).
+Benign steering increases jailbreak risk — “Steering Externalities” (2602.04896).
+Entropy alone is insufficient for safe selective prediction — (2603.21172): the gate must combine router margin + a calibrated score, not entropy alone.
+2. Problem Statement
+Core question.  Can query-conditional latent steering for reasoning be equipped with a calibrated abstention gate that controls the rate of harm — the probability that steering flips a baseline-correct answer to wrong — at a user-chosen level α via conformal risk control, while still capturing the upside when retrieval is confident?
+Concrete formulation.
+Build an open-domain steering bank — cluster a large demonstration corpus into auto-discovered skills (one steering vector per cluster, computed offline);
+Per query, retrieve the nearest skill vector(s) by query similarity;
+compose the retrieved vectors;
+steer-or-abstain by a conformally-calibrated confidence score.
+All at negligible cost: one query embedding + a cosine lookup + a vector add; zero extra context tokens; new skills = new bank entries, no retraining.
+The guarantee (stated honestly — not overclaimed).
+NOT “never harms any instance.” Rather: under exchangeable calibration data, conformal risk control bounds the expected harm rate ≤ α with high probability, trading coverage (how often we steer) for safety. Overclaiming here is the fastest path to desk-rejection.
+Success criteria (falsifiable).
+Why top-tier / why tractable.
+Why top-tier: first retrieval-augmented, extensible, no-harm steering framework; reframes steering's known unreliability as a routing + abstention problem; clean RAG analogy; strong efficiency.
+Why 1-month-tractable: bank = clustered CAA/ICV vectors (public code); router = cosine-kNN to start (trivial); infra reusable; the headline experiment (heterogeneity) is a small mixed-benchmark eval.
+3. Probable Solutions (Design Space)
+This is a design space to explore, not a committed solution. Components A–F can be mixed; start from the simplest defensible choice in each and ablate upward.
+A. Bank construction (offline, cheap)
+Cluster a demonstration corpus into skills (k-means on query embeddings, or use dataset/task labels). Per cluster c, compute a steering vector v_c via:
+CAA mean-difference (the base primitive);
+ICV — PCA of h(y) − h(x) over demonstrations;
+Fisher / FRE estimator (§5): variance-aware direction Σ_W⁻¹(μ⁺−μ⁻); diagonal = 1/σ weighting — more reliable per-vector. This is a clean ablation, not the main claim.
+Store (key_c, v_c, layer_c, σ_c) where key_c = cluster centroid in an embedding space and σ_c = a reliability/spread score.
+B. Routing (per query) — the core algorithmic novelty
+C. Composition (when multiple skills fire)
+z = h + Σ_c w_c · v_c, but naive linear sums interfere. Options: orthogonalization / subspace allocation (MAT-Steer, MSRS) or gated/non-linear composition (K-Steering). Keep top-k small (k ≤ 2–3).
+D. Injection site
+Single middle layer to start; optionally an input-dependent layer (à la “Where to Steer”).
+E. No-harm gate (headline safety property)
+Define a confidence ρ(query) from router margin and/or model signal. If ρ is below threshold, abstain (apply nothing). Calibrate the threshold by conformal risk control on held-out data so the expected harm rate ≤ α. This directly answers the “steering can hurt” critique.
+F. Math framing to lean on
+Routing = a non-parametric mixture-of-steering-experts (kernel / Nadaraya–Watson weights over bank keys);
+Composition = constrained vector addition under orthogonality;
+Gating = a selective-prediction / risk–coverage problem (abstain to bound risk).
+These give the paper rigor without any new training.
+4. Experiments to Start ASAP
+Ordered by priority. The first three are the “does-the-thesis-live” gate — begin immediately, in parallel where possible.
+Immediate (week 1) — stand up the spine
+E0 · Sanity reproduction. Reproduce one CAA result + one PDS number on a single reasoning benchmark (e.g. GSM8K). This is a correctness gate before building anything new.
+E1 · Bank pipeline (small). On a small corpus slice: corpus → embed queries → k-means (k≈50–100) → one CAA/ICV vector + key + reliability score per cluster. Timebox this — it is the riskiest engineering.
+E2 · Conformal gate prototype. Define harm = (baseline-correct → steered-wrong). Build a confidence score from router margin + a model signal (NOT entropy alone). Calibrate the steer/abstain threshold by conformal risk control on held-out calibration data.
+The headline figure (weeks 2–3)
+E3 · Risk–coverage frontier. RAS-gate vs global-steering vs no-steer on a heterogeneous mixture. Show empirical harm rate ≤ α (tracks the conformal target) while global steering violates α. This figure decides whether the thesis lives.
+Follow-on ablations (weeks 3–4)
+E4 · Router comparison: embedding-kNN vs model-internal-state vs SAE-feature.
+E5 · Composition: multi-skill queries — orthogonalized vs naive, top-k ≤ 3; ablate bank granularity k.
+E6 · Extensibility: add a new corpus slice → new bank entries, no retraining → gain there, no regression elsewhere, α still held; unseen-but-related routing.
+E7 · Fisher/FRE vs CAA bank: does a variance-aware (Fisher/FRE) bank beat a mean-diff (CAA) bank?
+Experimental matrix
+Baselines.
+no-steer · best global CAA/ICV · PDS · K-CAST · demonstration-RAG (EPR / kNN-prompting, to expose the context-token cost) · oracle routing (skyline) · ungated RAS (to show the gate's value).
+Models.
+Llama-3.1-8B · Qwen2.5-7B · (+ a reasoning-distilled model).
+Metrics.
+empirical-harm-rate@α and coverage (the headline risk–coverage curve) · per-skill & aggregate accuracy · routing accuracy · cost (extra tokens, latency) · ≥5 seeds.
+5. GitHub Repos to Implement / Reuse
+Reuse existing infra wherever possible — the bank, vectors, and intervention hooks all have public implementations. Verify the exact URL/commit before depending on each.
+Core steering & intervention infra
+Routing, SAE features & composition
+Conformal / selective-prediction (the headline math)
+Note: there is no off-the-shelf repo for “conformal risk control applied to the steering decision” — that integration is the novel engineering. Borrow the calibration machinery above and wire it onto the harm-rate loss.
+6. Datasets to Procure
+Two roles: (a) a demonstration corpus to cluster into the bank, and (b) heterogeneous reasoning benchmarks for the risk–coverage evaluation. All are public on the HuggingFace Hub unless noted.
+A. Demonstration corpora (build the bank)
+B. Reasoning benchmarks (the heterogeneous eval)
+Heterogeneous mixture for E3: concatenate a math slice (GSM8K) + a commonsense/logic slice (CommonsenseQA / StrategyQA) + a broad slice (BBH / MMLU). The mixture is where global steering must violate α and RAS-gate must hold it — that contrast is the paper.
+7. Research Plan & Timeline (~4 weeks, efficiency-first)
+8. Novelty Verdict & Closest Competitors
+“Query-conditional steering” is NOT novel — it is a crowded 2025–26 area (CAST, K-CAST, HyperSteer, SADI, PDS, Steer2Adapt, EasySteer, …). The defensible novelty is the system + routing intelligence + no-harm guarantee + reasoning focus. The four closest works and why RAS differs:
+9. Prioritized Reading List
+Tier 0 — the 4 closest competitors (read FIRST)
+K-CAST — Vedavati et al., AAAI 2025, arXiv 2505.12189 — kNN-conditional steering for formal reasoning.
+CAST: Programming Refusal with Conditional Activation Steering — Lee et al., ICLR 2025 (spotlight), 2409.05907.
+HyperSteer — arXiv 2506.03292 — hypernetwork generates steering vectors (generate-not-retrieve contrast).
+Steer2Adapt — arXiv 2602.07276 — compose a fixed basis via few-shot calibration. (skim EasySteer 2509.25175.)
+Tier 1 — primitives you build on
+CAA — Rimsky et al., ACL 2024, 2312.06681 — the base steering vector.
+In-Context Vectors (ICV) — Liu et al., ICML 2024, 2311.06668 (in your directory).
+Prototype-Based Dynamic Steering (PDS) — 2510.05498 — closest instance-adaptive reasoning work; read fully.
+SADI — Wang et al., ICLR 2025, 2410.12299 — semantics-adaptive intervention.
+Tier 2 — headline mechanism (conformal no-harm) + enablers
+Conformal Abstention for LLM Hallucinations — 2405.01563; Conformal Risk Control for LLMs — 2509.23007.
+Entropy Alone is Insufficient for Safe Selective Prediction — 2603.21172 (do NOT gate on entropy alone).
+Steering Externalities: Benign Steering Increases Jailbreak Risk — 2602.04896; Tan et al., NeurIPS 2024.
+Composition: MAT-Steer 2502.12446 / K-Steering 2505.24535. SAE routing: Arad et al., EMNLP 2025, 2505.20063.
+Tier 3 — conceptual neighbors (RAG analogs) to position against
+LoRA retrieval/routing: LoraHub (2023), LoRA-Retriever (2024), PHATGOOSE / Arrow (2024) — the parametric analog.
+Demonstration retrieval for ICL: EPR (Rubin et al., NAACL 2022), UDR (Li et al., ACL 2023) — the token-cost analog.
+Reasoning skill/CoT vectors: Uncovering Latent CoT Vectors (2409.14026); Venhoff et al. (2506.18167).
+Verification status.
+Verified by author: CAA 2312.06681; CAST 2409.05907; K-CAST 2505.12189; HyperSteer 2506.03292; Steer2Adapt 2602.07276; EasySteer 2509.25175; Tan NeurIPS'24; ICV 2311.06668; Venhoff 2506.18167; Conformal Abstention 2405.01563; Conformal Risk Control 2509.23007; 2603.21172; Steering-Externalities 2602.04896.
+Agent-sourced (verify before citing): SADI 2410.12299; PDS 2510.05498; MAT-Steer 2502.12446; K-Steering 2505.24535; Arad 2505.20063; “Where to Steer” 2604.03867; latent-CoT-vectors 2409.14026.
+Canonical (confirm venue): LoraHub; LoRA-Retriever; PHATGOOSE; Arrow; EPR (Rubin 2022); UDR (Li 2023); ReFT 2404.03592.
+10. Risks & Critical Cautions
+Crowded space → lead with the RAG/extensibility + no-harm + heterogeneity wedge, NOT “conditional steering.”
+Router errors hurt → the no-harm uncertainty gate is not optional — it is the safety contribution.
+Composition interference → keep top-k ≤ 2–3; use orthogonalization; ablate naive vs orthogonal.
+“Just MoE / LoRA-routing” critique → emphasize activation-space, training-free, no weight merge, 0 context tokens, pluggable bank; quantify the cost gap vs demonstration-RAG.
+Gains only under heterogeneity → that's the point — state the scope honestly (single-task ⇒ RAS≈global).
+Bank is the riskiest engineering → timebox Phase 0; start moderate corpus + k≈50–100; scale only if Phase A succeeds.
+Name collision → do NOT reuse “Selective Steering” (2601.19375 = norm-preserving rotation). Use “Conformal Steering” / “Safe RAS.”
+Scope discipline → don't rebuild dropped inversion/on-manifold machinery; don't over-engineer a learned router before cosine-kNN proves the heterogeneity thesis.
+Resolved decisions (user, 2026-06-23): Headline = the conformal no-harm guarantee (risk–coverage frontier is the money figure). Bank scope = open-domain corpus-clustered. Honest claim = expected harm-rate control ≤ α w.h.p. under exchangeability — NOT “never harms.”
